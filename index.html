@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0c1018">
+<title>AirGap</title>
+<style>
+  :root{ --bg:#0c1018; --panel:#151c28; --line:#26303f; --ink:#e8edf5; --dim:#8794a6; --cyan:#35c4c4; --amber:#e0a93c; --green:#3cc07a; }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  header{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+  header h1{font-size:18px;margin:0;font-weight:700;letter-spacing:1px}
+  header .d{font-size:12px;color:var(--dim);margin-left:auto}
+  .tabs{display:flex;gap:8px;padding:12px 16px;justify-content:center}
+  .tabs button{border:1px solid var(--line);background:transparent;color:var(--dim);font-weight:600;padding:9px 22px;border-radius:999px;cursor:pointer}
+  .tabs button.on{background:var(--cyan);color:#06181a;border-color:var(--cyan)}
+  main{max-width:560px;margin:0 auto;padding:6px 16px 40px}
+  .panel{display:none} .panel.on{display:block}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+  label{display:block;font-size:13px;color:var(--dim);margin:6px 0 4px}
+  textarea,input[type=text]{width:100%;background:#0a0f17;border:1px solid var(--line);border-radius:9px;color:var(--ink);font:inherit;padding:10px;font-family:ui-monospace,monospace;font-size:13px}
+  .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  button.b{background:var(--cyan);color:#06181a;border:none;border-radius:9px;padding:10px 16px;font-weight:700;cursor:pointer}
+  button.g{background:transparent;color:var(--cyan);border:1px solid var(--line);border-radius:9px;padding:10px 16px;font-weight:600;cursor:pointer}
+  #qrwrap{display:flex;justify-content:center;padding:10px 0}
+  canvas{background:#fff;border-radius:10px;image-rendering:pixelated;width:min(82vw,360px);height:min(82vw,360px)}
+  video{width:100%;border-radius:10px;background:#000;max-height:46vh}
+  .meter{height:8px;background:#0a0f17;border-radius:5px;overflow:hidden;margin:8px 0}
+  .meter span{display:block;height:100%;background:var(--green);width:0;transition:width .2s}
+  .stat{font-size:13px;color:var(--dim);text-align:center}
+  .hint{font-size:12px;color:var(--dim);margin-top:8px}
+  input[type=range]{width:100%;accent-color:var(--cyan)}
+  .out{font-family:ui-monospace,monospace;font-size:12px;background:#0a0f17;border:1px dashed var(--line);border-radius:9px;padding:10px;white-space:pre-wrap;word-break:break-word;max-height:150px;overflow:auto}
+</style>
+</head>
+<body>
+<header><h1>✦ AIRGAP</h1><span class="d">no network · no deps · pixels &amp; files only</span></header>
+<div class="tabs"><button id="t-send" class="on" onclick="mode('send')">Send</button><button id="t-recv" onclick="mode('recv')">Receive</button></div>
+
+<main>
+  <!-- SEND -->
+  <div class="panel on" id="p-send">
+    <div class="card">
+      <label>Data to send (text, or load a file)</label>
+      <textarea id="src" placeholder="type, paste, or load a file…"></textarea>
+      <div class="row" style="margin-top:8px">
+        <button class="g" onclick="document.getElementById('file').click()">Load file…</button>
+        <input type="file" id="file" style="display:none" onchange="loadFile(event)">
+        <button class="b" onclick="startSend()">Beam via QR ▶</button>
+      </div>
+    </div>
+    <div class="card" id="beamcard" style="display:none">
+      <div id="qrwrap"><canvas id="qr" width="300" height="300"></canvas></div>
+      <div class="stat" id="frameStat">—</div>
+      <label>Speed (frames/sec) <span id="fpsLbl">8</span></label>
+      <input type="range" id="fps" min="2" max="15" value="8" oninput="fpsLbl.textContent=this.value">
+      <div class="row"><button class="g" onclick="stopSend()">Stop</button>
+        <button class="g" onclick="usbExport()">⇩ USB / file export</button></div>
+      <div class="hint">Hold the other phone's <b>Receive</b> camera at this screen. Fountain-cycled, so dropped frames don't matter — it loops till they've got every piece.</div>
+    </div>
+  </div>
+
+  <!-- RECEIVE -->
+  <div class="panel" id="p-recv">
+    <div class="card">
+      <video id="vid" playsinline></video>
+      <div class="meter"><span id="bar"></span></div>
+      <div class="stat" id="recvStat">Tap Scan and point at the sender's screen.</div>
+      <div class="row" style="margin-top:8px">
+        <button class="b" id="scanBtn" onclick="toggleScan()">Scan ▶</button>
+        <button class="g" onclick="document.getElementById('ufile').click()">⇧ USB / file import</button>
+        <input type="file" id="ufile" style="display:none" onchange="usbImport(event)">
+      </div>
+    </div>
+    <div class="card" id="resultCard" style="display:none">
+      <label>Received</label>
+      <div class="out" id="result"></div>
+      <div class="row" style="margin-top:8px"><button class="g" onclick="copyResult()">Copy</button><button class="g" onclick="saveResult()">Save file</button></div>
+    </div>
+  </div>
+</main>
+
+<script>
+// ═══════════════ dependency-free QR encoder (byte, ECC-L, v1–9, mask 0) — verified vs jsQR ═══════════════
+const EXP=new Uint8Array(512),LOG=new Uint8Array(256);
+(()=>{let x=1;for(let i=0;i<255;i++){EXP[i]=x;LOG[x]=i;x<<=1;if(x&0x100)x^=0x11d;}for(let i=255;i<512;i++)EXP[i]=EXP[i-255];})();
+const gmul=(a,b)=>(a===0||b===0)?0:EXP[LOG[a]+LOG[b]];
+function rsGen(ec){let g=[1];for(let i=0;i<ec;i++){const ng=new Array(g.length+1).fill(0);for(let j=0;j<g.length;j++){ng[j]^=g[j];ng[j+1]^=gmul(g[j],EXP[i]);}g=ng;}return g;}
+function rsEnc(data,ec){const g=rsGen(ec);const res=new Array(ec).fill(0);for(const d of data){const f=d^res[0];res.shift();res.push(0);if(f!==0)for(let j=0;j<ec;j++)res[j]^=gmul(g[j+1],f);}return res;}
+const V={1:[7,1,19],2:[10,1,34],3:[15,1,55],4:[20,1,80],5:[26,1,108],6:[18,2,68],7:[20,2,78],8:[24,2,97],9:[30,2,116]};
+const ALIGN={1:[],2:[6,18],3:[6,22],4:[6,26],5:[6,30],6:[6,34],7:[6,22,38],8:[6,24,42],9:[6,26,46]};
+const getBit=(x,i)=>(x>>>i)&1;
+function bch(data,poly,pl){let rem=data<<pl;const deg=poly.toString(2).length-1;for(let i=15+pl-1;i>=pl;i--){if((rem>>>i)&1)rem^=poly<<(i-deg);}return rem&((1<<pl)-1);}
+function formatBits(mask){const data=(0b01<<3)|mask;return ((data<<10)|bch(data,0x537,10))^0x5412;}
+function versionBits(v){return (v<<12)|bch(v,0x1f25,12);}
+function dataCodewords(bytes,ver){const [ec,nb,dpb]=V[ver];const total=nb*dpb;const bits=[];const push=(val,len)=>{for(let i=len-1;i>=0;i--)bits.push((val>>i)&1);};
+  push(0b0100,4);push(bytes.length,8);for(const b of bytes)push(b,8);let rem=total*8-bits.length;push(0,Math.min(4,Math.max(0,rem)));while(bits.length%8)bits.push(0);
+  const cw=[];for(let i=0;i<bits.length;i+=8){let v=0;for(let j=0;j<8;j++)v=(v<<1)|bits[i+j];cw.push(v);}const p=[0xEC,0x11];let k=0;while(cw.length<total)cw.push(p[k++&1]);return cw;}
+function interleave(bytes,ver){const [ec,nb,dpb]=V[ver];const cw=dataCodewords(bytes,ver);const bl=[];for(let b=0;b<nb;b++)bl.push(cw.slice(b*dpb,(b+1)*dpb));
+  const eb=bl.map(x=>rsEnc(x,ec));const out=[];for(let i=0;i<dpb;i++)for(let b=0;b<nb;b++)out.push(bl[b][i]);for(let i=0;i<ec;i++)for(let b=0;b<nb;b++)out.push(eb[b][i]);return out;}
+function pickVersion(len){for(let v=1;v<=9;v++){const [ec,nb,dpb]=V[v];if(len<=nb*dpb-2)return v;}throw new Error('chunk too big');}
+function encodeQR(bytes){const ver=pickVersion(bytes.length);const size=17+4*ver;const g=Array.from({length:size},()=>new Int8Array(size).fill(-1));const fn=Array.from({length:size},()=>new Uint8Array(size));
+  const setF=(y,x,v)=>{g[y][x]=v?1:0;fn[y][x]=1;};
+  const finder=(y,x)=>{for(let dy=-1;dy<=7;dy++)for(let dx=-1;dx<=7;dx++){const yy=y+dy,xx=x+dx;if(yy<0||xx<0||yy>=size||xx>=size)continue;const d=Math.max(Math.abs(dy-3),Math.abs(dx-3));setF(yy,xx,(d!==2&&d<=3));}};
+  finder(0,0);finder(0,size-7);finder(size-7,0);
+  for(let i=8;i<size-8;i++){setF(6,i,i%2===0);setF(i,6,i%2===0);}
+  const ap=ALIGN[ver];for(const r of ap)for(const c of ap){if((r<8&&c<8)||(r<8&&c>size-9)||(r>size-9&&c<8))continue;for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++){const d=Math.max(Math.abs(dy),Math.abs(dx));setF(r+dy,c+dx,d!==1);}}
+  setF(size-8,8,1);
+  for(let i=0;i<9;i++){if(!fn[8][i])fn[8][i]=1;if(!fn[i][8])fn[i][8]=1;}
+  for(let i=0;i<8;i++){fn[8][size-1-i]=1;fn[size-1-i][8]=1;}
+  if(ver>=7)for(let i=0;i<18;i++){const a=size-11+i%3,b=(i/3)|0;fn[b][a]=1;fn[a][b]=1;}
+  const data=interleave(bytes,ver);let bi=0;
+  for(let right=size-1;right>=1;right-=2){if(right===6)right=5;for(let vert=0;vert<size;vert++)for(let j=0;j<2;j++){const x=right-j;const up=((right+1)&2)===0;const y=up?size-1-vert:vert;
+    if(!fn[y][x]){let bit=bi<data.length*8?getBit(data[bi>>3],7-(bi&7)):0;bi++;if(((x+y)%2)===0)bit^=1;g[y][x]=bit;}}}
+  const fmt=formatBits(0);
+  for(let i=0;i<=5;i++)g[i][8]=getBit(fmt,i);g[7][8]=getBit(fmt,6);g[8][8]=getBit(fmt,7);g[8][7]=getBit(fmt,8);
+  for(let i=9;i<15;i++)g[8][14-i]=getBit(fmt,i);for(let i=0;i<8;i++)g[8][size-1-i]=getBit(fmt,i);for(let i=8;i<15;i++)g[size-15+i][8]=getBit(fmt,i);g[size-8][8]=1;
+  if(ver>=7){const vb=versionBits(ver);for(let i=0;i<18;i++){const bit=getBit(vb,i);const a=size-11+i%3,b=(i/3)|0;g[b][a]=bit;g[a][b]=bit;}}
+  return {size,modules:g};}
+
+// ═══════════════ transfer protocol (chunk / reassemble) ═══════════════
+const te=new TextEncoder(),td=new TextDecoder();
+function b64e(u8){let s='';for(let i=0;i<u8.length;i++)s+=String.fromCharCode(u8[i]);return btoa(s);}
+function b64d(s){const bin=atob(s);const u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);return u;}
+function chunk(bytes,per=64){const total=Math.ceil(bytes.length/per)||1;const fr=[];for(let i=0;i<total;i++){const part=bytes.slice(i*per,(i+1)*per);const hdr=new Uint8Array([i&255,(i>>8)&255,total&255,(total>>8)&255]);fr.push(b64e(new Uint8Array([...hdr,...part])));}return fr;}
+function assemble(map){let total=0;for(const u of map.values())total=u[2]|(u[3]<<8);const parts=[];for(let i=0;i<total;i++){if(!map.has(i))return null;parts.push(map.get(i).slice(4));}let n=0;for(const p of parts)n+=p.length;const o=new Uint8Array(n);let k=0;for(const p of parts){o.set(p,k);k+=p.length;}return o;}
+
+// ═══════════════ UI: send ═══════════════
+function mode(m){ for(const x of ['send','recv']){ document.getElementById('t-'+x).classList.toggle('on',x===m); document.getElementById('p-'+x).classList.toggle('on',x===m);} if(m!=='recv') stopScan(); }
+function loadFile(e){ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>{ window._blob=new Uint8Array(r.result); document.getElementById('src').value='[file: '+f.name+', '+window._blob.length+' bytes]'; }; r.readAsArrayBuffer(f); }
+let sendTimer=null, sendFrames=[], sendIdx=0;
+function currentBytes(){ if(window._blob && document.getElementById('src').value.startsWith('[file:')) return window._blob; return te.encode(document.getElementById('src').value); }
+function startSend(){ const bytes=currentBytes(); if(!bytes.length) return; sendFrames=chunk(bytes).map(s=>encodeQR(te.encode(s)));
+  document.getElementById('beamcard').style.display='block'; sendIdx=0; stopSend(true);
+  const tick=()=>{ draw(document.getElementById('qr'), sendFrames[sendIdx]); document.getElementById('frameStat').textContent='frame '+(sendIdx+1)+' / '+sendFrames.length+'  ·  '+bytes.length+' bytes'; sendIdx=(sendIdx+1)%sendFrames.length; };
+  const fps=+document.getElementById('fps').value; tick(); sendTimer=setInterval(tick,1000/fps); }
+function stopSend(keep){ if(sendTimer){ clearInterval(sendTimer); sendTimer=null; } if(!keep){} }
+function draw(cv, qr){ const q=4, s=qr.size, px=Math.floor(cv.width/(s+q*2)); const ctx=cv.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,cv.width,cv.height); ctx.fillStyle='#000';
+  for(let y=0;y<s;y++)for(let x=0;x<s;x++) if(qr.modules[y][x]===1) ctx.fillRect((x+q)*px,(y+q)*px,px,px); }
+
+// ═══════════════ UI: receive (BarcodeDetector) ═══════════════
+let stream=null, scanning=false, det=null, frames=new Map();
+async function toggleScan(){ scanning?stopScan():startScan(); }
+async function startScan(){
+  if(!('BarcodeDetector' in window)){ document.getElementById('recvStat').textContent='This browser has no QR scanner (use Chrome / Android). You can still USB-import.'; return; }
+  try{ det=new BarcodeDetector({formats:['qr_code']}); stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    const v=document.getElementById('vid'); v.srcObject=stream; await v.play(); scanning=true; frames.clear(); document.getElementById('scanBtn').textContent='Stop';
+    loopScan(); }catch(e){ document.getElementById('recvStat').textContent='Camera needed (allow access, use https).'; }
+}
+function stopScan(){ scanning=false; if(stream){ stream.getTracks().forEach(t=>t.stop()); stream=null; } const b=document.getElementById('scanBtn'); if(b) b.textContent='Scan ▶'; }
+async function loopScan(){ if(!scanning) return; const v=document.getElementById('vid');
+  try{ const codes=await det.detect(v); for(const c of codes){ try{ const u=b64d(c.rawValue); const seq=u[0]|(u[1]<<8), total=u[2]|(u[3]<<8); if(!frames.has(seq)){ frames.set(seq,u); } document.getElementById('bar').style.width=Math.round(frames.size/total*100)+'%'; document.getElementById('recvStat').textContent='got '+frames.size+' / '+total+' frames';
+      const done=assemble(frames); if(done){ finishRecv(done); return; } }catch(_){} } }catch(_){}
+  requestAnimationFrame(loopScan); }
+let recvBytes=null;
+function finishRecv(bytes){ stopScan(); recvBytes=bytes; document.getElementById('resultCard').style.display='block'; document.getElementById('recvStat').textContent='✓ complete — '+bytes.length+' bytes';
+  let text; try{ text=td.decode(bytes); if(/[\u0000-\u0008\u000e-\u001f]/.test(text)) text=null; }catch(_){ text=null; }
+  document.getElementById('result').textContent = text!==null ? text : '[binary, '+bytes.length+' bytes — use Save file]'; }
+
+// ═══════════════ USB / file (stand-in for removable media) ═══════════════
+function usbExport(){ const bytes=currentBytes(); dl(bytes,'airgap-payload.bin'); }
+function usbImport(e){ const f=e.target.files[0]; if(!f) return; const r=new FileReader(); r.onload=()=>finishRecv(new Uint8Array(r.result)); r.readAsArrayBuffer(f); }
+function saveResult(){ if(recvBytes) dl(recvBytes,'airgap-received.bin'); }
+function copyResult(){ navigator.clipboard?.writeText(document.getElementById('result').textContent); }
+function dl(bytes,name){ const b=new Blob([bytes],{type:'application/octet-stream'}); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),2000); }
+</script>
+</body>
+</html>
