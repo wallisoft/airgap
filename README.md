@@ -3,6 +3,8 @@
 Dependency-free **air-gapped data transfer**. Move text, a key, or a small file between two devices with **no
 network, ever** — an animated QR run (screen → camera) or a USB/file hand-off. No server, no account, no backend.
 
+**Try it:** **[juska.uk](https://juska.uk)** — or download the single file there and run it offline, forever.
+
 ## How it works
 
 - **Send** — the data is chunked into a fountain-cycled run of QR codes shown full-screen.
@@ -18,4 +20,4 @@ any store release.)
 Dual-licensed: free software under **GPL-3.0** (see [LICENSE](LICENSE)); a **commercial licence** is available
 for closed / proprietary use (see [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md)). Contact hello@tiny-web.uk.
 
-Made by [Wallisoft](https://github.com/wallisoft) — Eastbourne.
+From the makers of **[Visualised](https://visualised.io)** — Wallisoft, Eastbourne.
