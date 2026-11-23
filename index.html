@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="theme-color" content="#0c1018">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-192.png">
 <title>AirGap</title>
 <style>
   :root{ --bg:#0c1018; --panel:#151c28; --line:#26303f; --ink:#e8edf5; --dim:#8794a6; --cyan:#35c4c4; --amber:#e0a93c; --green:#3cc07a; }
@@ -166,5 +168,6 @@ function saveResult(){ if(recvBytes) dl(recvBytes,'airgap-received.bin'); }
 function copyResult(){ navigator.clipboard?.writeText(document.getElementById('result').textContent); }
 function dl(bytes,name){ const b=new Blob([bytes],{type:'application/octet-stream'}); const a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),2000); }
 </script>
+<script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));</script>
 </body>
 </html>
